@@ -1,4 +1,4 @@
-````markdown
+
 # 💹 Emotional AI Investment Advisor
 
 ### 🤖 AI-Powered Conversational Financial Planning Platform
@@ -371,4 +371,3 @@ If you like this project, don't forget to **Star ⭐ the repository**.
 ---
 
 > **"Invest wisely, not emotionally. Let AI help you build a smarter financial future."**
-````
