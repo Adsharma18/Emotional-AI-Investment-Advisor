@@ -101,7 +101,7 @@ The dashboard will include:
 
 ---
 
-```markdown
+
 ## 🛠 Tech Stack
 
 ## 💡 Languages
@@ -140,11 +140,11 @@ The dashboard will include:
 ![GitHub](https://img.shields.io/badge/GitHub-181717?style=for-the-badge&logo=github&logoColor=white)
 ![Postman](https://img.shields.io/badge/Postman-FF6C37?style=for-the-badge&logo=postman&logoColor=white)
 ![VSCode](https://img.shields.io/badge/VS_Code-007ACC?style=for-the-badge&logo=visualstudiocode&logoColor=white)
-```
+
 
 # 📂 Project Structure
 
-```
+
 Emotional-AI-Investment-Advisor
 │
 ├── backend
@@ -167,7 +167,7 @@ Emotional-AI-Investment-Advisor
 ├── screenshots
 ├── README.md
 └── requirements.txt
-```
+
 
 ---
 
@@ -195,7 +195,7 @@ Emotional-AI-Investment-Advisor
 
 # 🔄 Workflow
 
-```
+
 User
 
 ↓
@@ -221,7 +221,7 @@ AI Recommendation Engine
 ↓
 
 Personalized Investment Suggestions
-```
+
 
 ---
 
