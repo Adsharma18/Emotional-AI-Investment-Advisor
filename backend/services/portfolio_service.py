@@ -1,3 +1,4 @@
+import datetime
 from schemas import PortfolioItem, PortfolioAllocationResponse
 
 PORTFOLIO_BASELINES = {
@@ -23,7 +24,7 @@ PORTFOLIO_BASELINES = {
 
 class PortfolioService:
     @staticmethod
-    def get_allocation(risk_profile: str, emotion: str, fear_score: float, greed_score: float) -> PortfolioAllocationResponse:
+    def get_allocation(risk_profile: str, emotion: str, fear_score: float, greed_score: float, goals: list = None) -> PortfolioAllocationResponse:
         baseline_profile = risk_profile if risk_profile in PORTFOLIO_BASELINES else "Moderate"
         base_items = PORTFOLIO_BASELINES[baseline_profile]
         
@@ -31,33 +32,80 @@ class PortfolioService:
         allocated_items = [dict(item) for item in base_items]
         
         is_adjusted = False
-        explanation = "Your portfolio is fully aligned with your strategic long-term risk profile."
+        adjustments = []
         
-        # Apply emotional logic adjustments
-        if emotion in ["Anxious", "Panic"] or fear_score > 40.0:
-            is_adjusted = True
-            # Reduce Stocks, increase Cash/Bonds
-            reduction_factor = min(15.0, (fear_score / 100.0) * 15.0)  # max 15% reduction
+        # --- 1. Goal Horizon-Based Adjustments ---
+        goal_adjusted = False
+        if goals and len(goals) > 0:
+            short_term_targets = 0.0
+            total_targets = 0.0
+            today = datetime.date.today()
             
-            # Find equities
-            equity_index = -1
-            cash_index = -1
+            for goal in goals:
+                total_targets += goal.target_amount
+                try:
+                    # Parse target date
+                    g_date = datetime.datetime.strptime(goal.target_date, "%Y-%m-%d").date()
+                    days_left = (g_date - today).days
+                    years_left = days_left / 365.25
+                    # If goal is short-term (< 3 years away)
+                    if years_left < 3.0:
+                        short_term_targets += goal.target_amount
+                except Exception:
+                    pass
+            
+            if total_targets > 0 and short_term_targets > 0:
+                short_term_ratio = short_term_targets / total_targets
+                # If short-term goals comprise > 15% of total goal targets
+                if short_term_ratio > 0.15:
+                    shift_pct = min(15.0, short_term_ratio * 15.0)  # shift up to 15%
+                    
+                    # Deduct from Equities, add to Bonds
+                    eq_idx = -1
+                    bond_idx = -1
+                    for i, item in enumerate(allocated_items):
+                        if "Equities" in item["asset_class"]:
+                            eq_idx = i
+                        if "Bonds" in item["asset_class"]:
+                            bond_idx = i
+                            
+                    if eq_idx != -1 and bond_idx != -1:
+                        old_eq = allocated_items[eq_idx]["percentage"]
+                        new_eq = max(10.0, old_eq - shift_pct)
+                        actual_shift = old_eq - new_eq
+                        allocated_items[eq_idx]["percentage"] = round(new_eq, 1)
+                        allocated_items[bond_idx]["percentage"] = round(allocated_items[bond_idx]["percentage"] + actual_shift, 1)
+                        
+                        goal_adjusted = True
+                        is_adjusted = True
+                        adjustments.append(f"Goal Horizon Adjustment: We detected that {round(short_term_ratio * 100)}% of your financial goal targets are short-term (due in < 3 years). To insulate this capital from equity corrections, we shifted {round(actual_shift, 1)}% from Equities into Fixed Income (Bonds) for safety.")
+
+        # --- 2. Emotional State-Based Adjustments ---
+        emotion_adjusted = False
+        if emotion in ["Anxious", "Panic"] or fear_score > 40.0:
+            emotion_adjusted = True
+            is_adjusted = True
+            # Reduce Equities, increase Cash buffer
+            reduction_factor = min(15.0, (fear_score / 100.0) * 15.0)
+            
+            # Find Equities index
+            eq_idx = -1
+            cash_idx = -1
             for i, item in enumerate(allocated_items):
                 if "Equities" in item["asset_class"]:
-                    equity_index = i
+                    eq_idx = i
                 if "Cash" in item["asset_class"]:
-                    cash_index = i
+                    cash_idx = i
             
-            if equity_index != -1:
-                # Deduct from equity
-                old_equity = allocated_items[equity_index]["percentage"]
-                new_equity = max(10.0, old_equity - reduction_factor)
-                actual_deduction = old_equity - new_equity
-                allocated_items[equity_index]["percentage"] = round(new_equity, 1)
+            if eq_idx != -1:
+                old_eq = allocated_items[eq_idx]["percentage"]
+                new_eq = max(10.0, old_eq - reduction_factor)
+                actual_deduction = old_eq - new_eq
+                allocated_items[eq_idx]["percentage"] = round(new_eq, 1)
                 
-                # Add to cash (or create cash if it doesn't exist)
-                if cash_index != -1:
-                    allocated_items[cash_index]["percentage"] = round(allocated_items[cash_index]["percentage"] + actual_deduction, 1)
+                # Add to Cash reserves
+                if cash_idx != -1:
+                    allocated_items[cash_idx]["percentage"] = round(allocated_items[cash_idx]["percentage"] + actual_deduction, 1)
                 else:
                     allocated_items.append({
                         "asset_class": "Cash Equivalents",
@@ -65,50 +113,49 @@ class PortfolioService:
                         "description": "Risk-free reserve cash added to cushion against high anxiety and prevent panic decisions."
                     })
                     
-            explanation = f"Emotional Adjustment: We detected elevated fear/anxiety ({fear_score}% score). To mitigate panic-selling risks and protect your short-term peace of mind, we temporarily shifted {round(reduction_factor, 1)}% from Equities into Cash Equivalents. This shields your capital while you evaluate options rationally."
+            adjustments.append(f"Emotional Buffer: High market fear/anxiety ({round(fear_score)}% score) was detected. To help you maintain discipline and avoid sell-offs, we temporarily shifted {round(reduction_factor, 1)}% from Equities to Cash reserves.")
             
         elif emotion in ["Excited", "Greedy"] or greed_score > 40.0:
+            emotion_adjusted = True
             is_adjusted = True
-            # We want to lock in gains or curb FOMO
-            # Check if there is speculative or high equities, and shift it to gold/bonds
-            spec_index = -1
-            equity_index = -1
-            bond_index = -1
-            gold_index = -1
             
+            spec_idx = -1
+            eq_idx = -1
+            bond_idx = -1
+            gold_idx = -1
             for i, item in enumerate(allocated_items):
                 if "Speculative" in item["asset_class"]:
-                    spec_index = i
+                    spec_idx = i
                 if "Equities" in item["asset_class"]:
-                    equity_index = i
+                    eq_idx = i
                 if "Bonds" in item["asset_class"]:
-                    bond_index = i
+                    bond_idx = i
                 if "Gold" in item["asset_class"]:
-                    gold_index = i
+                    gold_idx = i
                     
             shift_amount = 0.0
             
-            # Cap speculative assets at 2% instead of 5% (or reduce by half)
-            if spec_index != -1:
-                old_spec = allocated_items[spec_index]["percentage"]
+            # Cap speculative assets at 2%
+            if spec_idx != -1:
+                old_spec = allocated_items[spec_idx]["percentage"]
                 new_spec = min(2.0, old_spec)
                 shift_amount += (old_spec - new_spec)
-                allocated_items[spec_index]["percentage"] = round(new_spec, 1)
+                allocated_items[spec_idx]["percentage"] = round(new_spec, 1)
                 
-            # Deduct from equities if FOMO is high
+            # Deduct from general equities under FOMO
             reduction_factor = min(10.0, (greed_score / 100.0) * 10.0)
-            if equity_index != -1:
-                old_eq = allocated_items[equity_index]["percentage"]
+            if eq_idx != -1:
+                old_eq = allocated_items[eq_idx]["percentage"]
                 new_eq = max(20.0, old_eq - reduction_factor)
                 shift_amount += (old_eq - new_eq)
-                allocated_items[equity_index]["percentage"] = round(new_eq, 1)
+                allocated_items[eq_idx]["percentage"] = round(new_eq, 1)
                 
-            # Allocate shift_amount to gold or bonds
+            # Shift assets to Gold/Bonds
             if shift_amount > 0:
-                if bond_index != -1:
-                    allocated_items[bond_index]["percentage"] = round(allocated_items[bond_index]["percentage"] + shift_amount, 1)
-                elif gold_index != -1:
-                    allocated_items[gold_index]["percentage"] = round(allocated_items[gold_index]["percentage"] + shift_amount, 1)
+                if bond_idx != -1:
+                    allocated_items[bond_idx]["percentage"] = round(allocated_items[bond_idx]["percentage"] + shift_amount, 1)
+                elif gold_idx != -1:
+                    allocated_items[gold_idx]["percentage"] = round(allocated_items[gold_idx]["percentage"] + shift_amount, 1)
                 else:
                     allocated_items.append({
                         "asset_class": "Fixed Income (Bonds)",
@@ -116,19 +163,24 @@ class PortfolioService:
                         "description": "Stable bond reserves holding capital taken out of hot speculative plays."
                     })
                     
-            explanation = f"Emotional Adjustment: We detected FOMO or high-yield seeking behavior ({greed_score}% score). To guard against buying at market peaks and concentration risk, we capped speculative exposures and redirected {round(shift_amount, 1)}% into defensive Fixed Income assets."
-            
-        elif emotion == "Calm":
-            explanation = "Your emotional state is Calm. You are perfectly placed to hold your standard strategic allocation without panic or hype adjustments."
+            adjustments.append(f"FOMO Control: Elevated speculative signals ({round(greed_score)}% score) were detected. To protect your compounding roadmap from buying at local peaks, we capped speculative exposures and redirected {round(shift_amount, 1)}% into defensive assets.")
 
-        # Map back to schemas
+        # --- 3. Compile Final Explanation ---
+        if is_adjusted:
+            explanation = " ".join(adjustments)
+        else:
+            explanation = "Your portfolio is fully aligned with your strategic long-term risk profile. What a great state of balance!"
+
+        # Map back to Pydantic schemas
         result_allocation = []
         for item in allocated_items:
-            result_allocation.append(PortfolioItem(
-                asset_class=item["asset_class"],
-                percentage=item["percentage"],
-                description=item["description"]
-            ))
+            # Ensure percentages are positive and non-zero before adding
+            if item["percentage"] > 0:
+                result_allocation.append(PortfolioItem(
+                    asset_class=item["asset_class"],
+                    percentage=item["percentage"],
+                    description=item["description"]
+                ))
             
         return PortfolioAllocationResponse(
             risk_profile=baseline_profile,

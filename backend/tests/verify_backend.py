@@ -8,6 +8,7 @@ from database import engine, Base, SessionLocal
 import models
 from services.llm_service import LLMService
 from services.portfolio_service import PortfolioService
+from services.auth_service import hash_password
 
 def run_tests():
     print("=== STARTING BACKEND AUTOMATED TESTS ===")
@@ -18,12 +19,26 @@ def run_tests():
     db = SessionLocal()
     print("[SUCCESS] Database tables initialized successfully.")
 
-    # 2. User Profile Setup
-    print("\n2. Testing User Profile operations...")
-    # Clear existing test profiles
+    # Clean up any existing records
+    db.query(models.ChatMessage).delete()
+    db.query(models.Goal).delete()
     db.query(models.UserProfile).delete()
+    db.query(models.User).delete()
+    db.commit()
+
+    # 2. User & Profile Setup
+    print("\n2. Testing User & Profile operations...")
+    test_user = models.User(
+        email="verify_test@example.com",
+        password_hash=hash_password("test_pass")
+    )
+    db.add(test_user)
+    db.commit()
+    db.refresh(test_user)
+    assert test_user.id is not None
     
     test_profile = models.UserProfile(
+        user_id=test_user.id,
         name="Aditi Sharma Test",
         risk_tolerance="Moderate",
         investment_horizon="Medium-Term",
@@ -36,14 +51,12 @@ def run_tests():
     db.refresh(test_profile)
     assert test_profile.id is not None
     assert test_profile.name == "Aditi Sharma Test"
-    print(f"[SUCCESS] User profile created: {test_profile.name} with {test_profile.risk_tolerance} risk.")
+    print(f"[SUCCESS] User & profile created: {test_profile.name} (User ID: {test_user.id}) with {test_profile.risk_tolerance} risk.")
 
     # 3. Goal CRUD Setup
     print("\n3. Testing Financial Goal CRUD...")
-    # Clear existing goals
-    db.query(models.Goal).delete()
-    
     new_goal = models.Goal(
+        user_id=test_user.id,
         name="Emergency Fund Test",
         target_amount=15000.0,
         current_amount=2000.0,
@@ -113,8 +126,10 @@ def run_tests():
     print(f"[SUCCESS] Panic allocation shifted assets from Equities ({panic_equity_pct}%) to Cash ({panic_cash_pct}%).")
 
     # Clean up test records
-    db.query(models.UserProfile).delete()
+    db.query(models.ChatMessage).delete()
     db.query(models.Goal).delete()
+    db.query(models.UserProfile).delete()
+    db.query(models.User).delete()
     db.commit()
     db.close()
     

@@ -1,8 +1,33 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from typing import Optional, List
 from datetime import datetime
 
-# Profile
+# --- Auth Schemas ---
+class UserRegister(BaseModel):
+    email: str
+    password: str
+    name: str
+
+class UserLogin(BaseModel):
+    email: str
+    password: str
+
+class UserResponse(BaseModel):
+    id: int
+    email: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+class TokenData(BaseModel):
+    email: Optional[str] = None
+
+# --- Profile Schemas ---
 class UserProfileBase(BaseModel):
     name: str
     risk_tolerance: str
@@ -21,11 +46,12 @@ class UserProfileUpdate(BaseModel):
 
 class UserProfileResponse(UserProfileBase):
     id: int
+    user_id: int
 
     class Config:
         from_attributes = True
 
-# Goal
+# --- Goal Schemas ---
 class GoalBase(BaseModel):
     name: str
     target_amount: float
@@ -45,11 +71,12 @@ class GoalUpdate(BaseModel):
 
 class GoalResponse(GoalBase):
     id: int
+    user_id: int
 
     class Config:
         from_attributes = True
 
-# Chat Message
+# --- Chat Message Schemas ---
 class ChatMessageBase(BaseModel):
     sender: str
     text: str
@@ -63,12 +90,13 @@ class ChatMessageCreate(ChatMessageBase):
 
 class ChatMessageResponse(ChatMessageBase):
     id: int
+    user_id: int
     timestamp: datetime
 
     class Config:
         from_attributes = True
 
-# API Request/Response
+# --- API Request/Response ---
 class ChatRequest(BaseModel):
     text: str
 

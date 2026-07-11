@@ -7,14 +7,61 @@ import {
   AlertTriangle, 
   TrendingUp, 
   Heart,
-  CornerDownLeft
+  CornerDownLeft,
+  Sparkles
 } from 'lucide-react';
+
+const PANIC_KEYWORDS = ["drop", "crash", "sell", "lose", "scared", "terrified", "panic", "fear", "dip", "bleeding", "plummet", "down", "ruined", "anxious", "worry", "worried", "recession", "uncertain"];
+const GREED_KEYWORDS = ["moon", "crypto", "doge", "bitcoin", "fomo", "rich", "millionaire", "fast", "double", "10x", "hype", "greedy", "buy now", "miss out", "next big", "speculate", "gamble"];
+const LOGIC_KEYWORDS = ["long term", "diversify", "stable", "calm", "patient", "plan", "retirement", "budget", "strategy", "history", "hold", "index fund", "discipline", "research"];
+
+const analyzeLocalSentiment = (text) => {
+  if (!text.trim()) return null;
+  const lower = text.toLowerCase();
+  
+  let fearCount = 0;
+  let greedCount = 0;
+  let logicCount = 0;
+
+  PANIC_KEYWORDS.forEach(w => { if (lower.includes(w)) fearCount++; });
+  GREED_KEYWORDS.forEach(w => { if (lower.includes(w)) greedCount++; });
+  LOGIC_KEYWORDS.forEach(w => { if (lower.includes(w)) logicCount++; });
+
+  const total = fearCount + greedCount + logicCount;
+  if (total === 0) {
+    return {
+      emotion: 'Neutral',
+      fear: 0,
+      greed: 0,
+      logic: 50
+    };
+  }
+
+  const fearPct = (fearCount / total) * 100;
+  const greedPct = (greedCount / total) * 100;
+  const logicPct = (logicCount / total) * 100;
+
+  const fear = Math.min(100, fearPct * 1.5);
+  const greed = Math.min(100, greedPct * 1.5);
+  const logic = Math.max(0, Math.min(100, 50 + (logicPct - (fearPct + greedPct) / 2)));
+
+  let emotion = 'Neutral';
+  if (fear > 40) {
+    emotion = fear > 70 ? 'Panic' : 'Anxious';
+  } else if (greed > 40) {
+    emotion = greed > 70 ? 'Greedy' : 'Excited';
+  } else if (logic > 60) {
+    emotion = 'Calm';
+  }
+
+  return { emotion, fear, greed, logic };
+};
 
 export default function ChatAdvisor({ activeChats, onSendMessage, onClearHistory, isLoading }) {
   const [inputText, setInputText] = useState('');
   const chatBottomRef = useRef(null);
   
-  // Local state for last analysis parameters
+  // Local state for last database analysis parameters
   const [lastAnalysis, setLastAnalysis] = useState({
     emotion: 'Neutral',
     fear: 0,
@@ -60,10 +107,15 @@ export default function ChatAdvisor({ activeChats, onSendMessage, onClearHistory
     onSendMessage(promptText);
   };
 
-  // Bias detection based on scores
+  // Real-time local typing analysis
+  const draftAnalysis = analyzeLocalSentiment(inputText);
+  const activeAnalysis = draftAnalysis || lastAnalysis;
+  const isTyping = !!inputText.trim();
+
+  // Bias detection based on active scores
   const getDetectedBiases = () => {
     const biases = [];
-    if (lastAnalysis.fear > 50) {
+    if (activeAnalysis.fear > 50) {
       biases.push({
         name: 'Loss Aversion',
         desc: 'Pain of losses is felt twice as much as gains, driving early liquidation.'
@@ -73,7 +125,7 @@ export default function ChatAdvisor({ activeChats, onSendMessage, onClearHistory
         desc: 'Over-indexing on recent market drops, assuming they will drop forever.'
       });
     }
-    if (lastAnalysis.greed > 50) {
+    if (activeAnalysis.greed > 50) {
       biases.push({
         name: 'FOMO (Fear of Missing Out)',
         desc: 'Chasing skyrocketing assets near their peak due to social excitement.'
@@ -83,7 +135,7 @@ export default function ChatAdvisor({ activeChats, onSendMessage, onClearHistory
         desc: 'Underestimating market risks and overestimating personal timing ability.'
       });
     }
-    if (lastAnalysis.fear <= 30 && lastAnalysis.greed <= 30 && lastAnalysis.logic > 60) {
+    if (activeAnalysis.fear <= 30 && activeAnalysis.greed <= 30 && activeAnalysis.logic > 60) {
       biases.push({
         name: 'Rational Asset Allocation',
         desc: 'Holding long term parameters and strategic rebalancing principles.'
@@ -219,10 +271,10 @@ export default function ChatAdvisor({ activeChats, onSendMessage, onClearHistory
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', marginBottom: '4px' }}>
                 <span>Fear / Anxiety</span>
-                <span style={{ color: 'var(--color-panic)', fontWeight: 'bold' }}>{lastAnalysis.fear.toFixed(0)}%</span>
+                <span style={{ color: 'var(--color-panic)', fontWeight: 'bold' }}>{activeAnalysis.fear.toFixed(0)}%</span>
               </div>
               <div style={{ height: '6px', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '3px', overflow: 'hidden' }}>
-                <div style={{ width: `${lastAnalysis.fear}%`, height: '100%', background: 'var(--color-panic)', borderRadius: '3' }} />
+                <div style={{ width: `${activeAnalysis.fear}%`, height: '100%', background: 'var(--color-panic)', borderRadius: '3px', transition: 'width 0.2s ease' }} />
               </div>
             </div>
 
@@ -230,10 +282,10 @@ export default function ChatAdvisor({ activeChats, onSendMessage, onClearHistory
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', marginBottom: '4px' }}>
                 <span>Greed / FOMO</span>
-                <span style={{ color: 'var(--color-greedy)', fontWeight: 'bold' }}>{lastAnalysis.greed.toFixed(0)}%</span>
+                <span style={{ color: 'var(--color-greedy)', fontWeight: 'bold' }}>{activeAnalysis.greed.toFixed(0)}%</span>
               </div>
               <div style={{ height: '6px', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '3px', overflow: 'hidden' }}>
-                <div style={{ width: `${lastAnalysis.greed}%`, height: '100%', background: 'var(--color-greedy)', borderRadius: '3' }} />
+                <div style={{ width: `${activeAnalysis.greed}%`, height: '100%', background: 'var(--color-greedy)', borderRadius: '3px', transition: 'width 0.2s ease' }} />
               </div>
             </div>
 
@@ -241,10 +293,10 @@ export default function ChatAdvisor({ activeChats, onSendMessage, onClearHistory
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', marginBottom: '4px' }}>
                 <span>Logical Strategy</span>
-                <span style={{ color: 'var(--color-calm)', fontWeight: 'bold' }}>{lastAnalysis.logic.toFixed(0)}%</span>
+                <span style={{ color: 'var(--color-calm)', fontWeight: 'bold' }}>{activeAnalysis.logic.toFixed(0)}%</span>
               </div>
               <div style={{ height: '6px', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '3px', overflow: 'hidden' }}>
-                <div style={{ width: `${lastAnalysis.logic}%`, height: '100%', background: 'var(--color-calm)', borderRadius: '3' }} />
+                <div style={{ width: `${activeAnalysis.logic}%`, height: '100%', background: 'var(--color-calm)', borderRadius: '3px', transition: 'width 0.2s ease' }} />
               </div>
             </div>
 
@@ -253,10 +305,13 @@ export default function ChatAdvisor({ activeChats, onSendMessage, onClearHistory
 
         {/* Active Emotion Badge info */}
         <div>
-          <h4 style={{ fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '6px' }}>Current Advisor Diagnosis</h4>
+          <h4 style={{ fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            {isTyping && <Sparkles size={12} style={{ color: 'var(--primary)', animation: 'pulse-glow 1.5s infinite' }} />}
+            {isTyping ? 'Typing Sentiment' : 'Last Saved Sentiment'}
+          </h4>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span className={`emotion-badge ${lastAnalysis.emotion.toLowerCase()}`}>
-              {lastAnalysis.emotion}
+            <span className={`emotion-badge ${activeAnalysis.emotion.toLowerCase()}`} style={{ borderStyle: isTyping ? 'dashed' : 'solid' }}>
+              {activeAnalysis.emotion}
             </span>
           </div>
         </div>

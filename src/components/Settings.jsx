@@ -134,6 +134,7 @@ export default function Settings({ profile, onSaveSettings }) {
                 <option value="mock">Built-in Advisor Heuristics (Default - Free & Offline)</option>
                 <option value="gemini">Google Gemini AI API (Real LLM)</option>
                 <option value="groq">Groq LLM API (Real LLM)</option>
+                <option value="grok">xAI Grok API (Real LLM)</option>
               </select>
               <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginTop: '4px' }}>
                 Offline heuristics analyze keywords for emotion. Connecting an API enables full LLM conversations.
@@ -147,7 +148,7 @@ export default function Settings({ profile, onSaveSettings }) {
                   type="password" 
                   value={apiKeyValue} 
                   onChange={(e) => setApiKeyValue(e.target.value)} 
-                  placeholder={apiKeyType === 'gemini' ? 'AIzaSy...' : 'gsk_...'}
+                  placeholder={apiKeyType === 'gemini' ? 'AIzaSy...' : (apiKeyType === 'groq' ? 'gsk_...' : 'xai_...')}
                   style={{ width: '100%' }}
                   required
                 />

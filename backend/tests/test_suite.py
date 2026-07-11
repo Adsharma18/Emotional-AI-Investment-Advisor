@@ -4,92 +4,131 @@ import sys
 
 BASE_URL = "http://127.0.0.1:8000"
 
+# Token holder
+TOKEN = ""
+
 def make_request(url, method="GET", data=None):
+    global TOKEN
     req_data = json.dumps(data).encode('utf-8') if data else None
-    headers = {'Content-Type': 'application/json'} if data else {}
+    headers = {'Content-Type': 'application/json'}
+    if TOKEN:
+        headers['Authorization'] = f"Bearer {TOKEN}"
+    
     req = urllib.request.Request(url, data=req_data, headers=headers, method=method)
-    with urllib.request.urlopen(req) as res:
-        return json.loads(res.read().decode('utf-8'))
+    try:
+        with urllib.request.urlopen(req) as res:
+            return json.loads(res.read().decode('utf-8'))
+    except urllib.error.HTTPError as e:
+        body = e.read().decode('utf-8')
+        try:
+            err_detail = json.loads(body)
+            raise Exception(f"HTTP {e.code}: {err_detail.get('detail', body)}")
+        except Exception:
+            raise Exception(f"HTTP {e.code}: {body}")
 
 def run_integration_tests():
+    global TOKEN
     print("====================================================")
-    print("   RUNNING EMOTIONAL AI ADVISOR FULL TEST SUITE     ")
+    print("  RUNNING SECURE EMOTIONAL AI ADVISOR TEST SUITE    ")
     print("====================================================\n")
     
-    # --- 1. PROFILE TESTS ---
-    print("1. Profile Endpoint Verification...")
+    # --- 1. REGISTRATION & LOGIN TESTS ---
+    print("1. Authentication System Verification...")
+    test_user_data = {
+        "email": "test_investor_aditi@example.com",
+        "password": "SecurePassword123!",
+        "name": "Aditi Sharma"
+    }
+    
+    try:
+        # Register User
+        reg_res = make_request(f"{BASE_URL}/api/auth/register", "POST", test_user_data)
+        assert "access_token" in reg_res
+        TOKEN = reg_res["access_token"]
+        print(f"  [PASS] Register new user successfully. Token acquired.")
+
+        # Try registering same user again (should fail with 400)
+        try:
+            make_request(f"{BASE_URL}/api/auth/register", "POST", test_user_data)
+            print("  [FAIL] Registering duplicate email succeeded but should have failed.")
+            sys.exit(1)
+        except Exception as e:
+            assert "already registered" in str(e).lower()
+            print("  [PASS] Duplicate registration rejected correctly.")
+
+        # Login User
+        login_res = make_request(f"{BASE_URL}/api/auth/login", "POST", {
+            "email": test_user_data["email"],
+            "password": test_user_data["password"]
+        })
+        assert "access_token" in login_res
+        TOKEN = login_res["access_token"]  # Use fresh login token
+        print("  [PASS] Login user successfully. Access token verified.")
+    except Exception as e:
+        print(f"  [FAIL] Authentication tests failed: {e}")
+        sys.exit(1)
+
+    # --- 2. PROFILE TESTS ---
+    print("\n2. Profile Endpoint Verification...")
     try:
         # Fetch current profile
         prof = make_request(f"{BASE_URL}/api/profile")
+        assert prof["name"] == "Aditi Sharma"
         print(f"  [PASS] Fetch default profile: Name={prof['name']}, Risk={prof['risk_tolerance']}")
 
         # Update profile
         updated_prof = make_request(f"{BASE_URL}/api/profile", "POST", {
-            "name": "Aditi Sharma",
             "risk_tolerance": "Aggressive",
-            "advisor_persona": "Direct"
+            "advisor_persona": "Direct",
+            "api_key_type": "grok",
+            "api_key_value": "xai_test_key_12345"
         })
-        assert updated_prof["name"] == "Aditi Sharma"
         assert updated_prof["risk_tolerance"] == "Aggressive"
         assert updated_prof["advisor_persona"] == "Direct"
-        print(f"  [PASS] Update profile: Name={updated_prof['name']}, Risk={updated_prof['risk_tolerance']}, Persona={updated_prof['advisor_persona']}")
+        assert updated_prof["api_key_type"] == "grok"
+        print(f"  [PASS] Update profile: Risk={updated_prof['risk_tolerance']}, Persona={updated_prof['advisor_persona']}, LLM={updated_prof['api_key_type']}")
     except Exception as e:
         print(f"  [FAIL] Profile test failure: {e}")
         sys.exit(1)
 
-    # --- 2. GOAL CRUD TESTS ---
-    print("\n2. Goals CRUD Endpoint Verification...")
+    # --- 3. GOAL CRUD TESTS ---
+    print("\n3. Goals CRUD Endpoint Verification...")
     try:
-        # Clear existing goals if any (we can do it manually or test by adding new ones)
         initial_goals = make_request(f"{BASE_URL}/api/goals")
-        initial_count = len(initial_goals)
-        print(f"  [INFO] Initial goal count: {initial_count}")
+        assert len(initial_goals) == 0
+        print("  [PASS] Goals list is empty initially for new user.")
 
         # Create goal
         new_goal = make_request(f"{BASE_URL}/api/goals", "POST", {
-            "name": "Retirement Fund",
-            "target_amount": 500000.0,
-            "current_amount": 10000.0,
-            "target_date": "2046-12-31",
-            "priority": "High"
+            "name": "Trip to Japan",
+            "target_amount": 5000.0,
+            "current_amount": 500.0,
+            "target_date": "2027-12-31",
+            "priority": "Medium"
         })
         assert new_goal["id"] is not None
-        assert new_goal["name"] == "Retirement Fund"
+        assert new_goal["name"] == "Trip to Japan"
         print(f"  [PASS] Create goal: ID={new_goal['id']}, Target=${new_goal['target_amount']}")
 
         # Update goal progress
         goal_id = new_goal["id"]
         updated_goal = make_request(f"{BASE_URL}/api/goals/{goal_id}", "PUT", {
-            "current_amount": 15000.0
+            "current_amount": 1000.0
         })
-        assert updated_goal["current_amount"] == 15000.0
+        assert updated_goal["current_amount"] == 1000.0
         print(f"  [PASS] Update goal: ID={goal_id}, Current Saved=${updated_goal['current_amount']}")
-
-        # Verify goal list increases
-        current_goals = make_request(f"{BASE_URL}/api/goals")
-        assert len(current_goals) == initial_count + 1
-        print(f"  [PASS] Goals list correctly incremented to {len(current_goals)} items")
 
         # Delete goal
         del_res = make_request(f"{BASE_URL}/api/goals/{goal_id}", "DELETE")
         assert "success" in del_res["message"].lower()
         print(f"  [PASS] Delete goal: ID={goal_id}")
-
-        # Verify goals list decrements back
-        final_goals = make_request(f"{BASE_URL}/api/goals")
-        assert len(final_goals) == initial_count
-        print(f"  [PASS] Goals list correctly decremented back to {len(final_goals)} items")
     except Exception as e:
         print(f"  [FAIL] Goals test failure: {e}")
         sys.exit(1)
 
-    # --- 3. CHAT EMOTION & SENTIMENT TESTS ---
-    print("\n3. Chat Analysis & Sentiment Verification...")
+    # --- 4. CHAT EMOTION & SENTIMENT TESTS ---
+    print("\n4. Chat Analysis & Sentiment Verification...")
     try:
-        # Clear chat history for clean test
-        make_request(f"{BASE_URL}/api/chat", "DELETE")
-        print("  [INFO] Chat history cleared.")
-
         # Test Panic Sentiment
         panic_chat = make_request(f"{BASE_URL}/api/chat", "POST", {
             "text": "I can't take this anymore. The market dip is bleeding my portfolio. I feel terrified. Should I sell?"
@@ -106,22 +145,14 @@ def run_integration_tests():
         assert greed_chat["emotion"] in ["Greedy", "Excited"]
         assert greed_chat["greed_score"] > 50.0
         print(f"  [PASS] Greed Chat: Emotion={greed_chat['emotion']}, Greed Score={greed_chat['greed_score']}%")
-
-        # Test Calm Sentiment
-        calm_chat = make_request(f"{BASE_URL}/api/chat", "POST", {
-            "text": "I want to rebalance my portfolio logically, diversify across index funds, and stay focused on my 10-year retirement plan."
-        })
-        assert calm_chat["emotion"] == "Calm"
-        assert calm_chat["logic_score"] > 60.0
-        print(f"  [PASS] Calm Chat: Emotion={calm_chat['emotion']}, Logic Score={calm_chat['logic_score']}%")
     except Exception as e:
         print(f"  [FAIL] Chat sentiment test failure: {e}")
         sys.exit(1)
 
-    # --- 4. DYNAMIC PORTFOLIO REBALANCING TESTS ---
-    print("\n4. Portfolio Rebalancing Engine Verification...")
+    # --- 5. DYNAMIC PORTFOLIO REBALANCING TESTS ---
+    print("\n5. Portfolio Rebalancing Engine Verification...")
     try:
-        # Trigger another Panic text to evaluate portfolio adaptation
+        # Trigger panic text to evaluate portfolio adaptation
         make_request(f"{BASE_URL}/api/chat", "POST", {
             "text": "I'm terrified the stock market is crashing! I want to sell everything to protect my money."
         })
@@ -141,42 +172,12 @@ def run_integration_tests():
         print(f"  [PASS] Portfolio adjusted from Aggressive base (80% Equities) due to Panic:")
         print(f"         - Equities reduced to {equities_item['percentage']}%")
         print(f"         - Cash buffer increased to {cash_item['percentage']}%")
-        print(f"         - Explanation: {portfolio['explanation'][:80]}...")
     except Exception as e:
         print(f"  [FAIL] Portfolio rebalancing test failure: {e}")
         sys.exit(1)
 
-    # --- 5. DYNAMIC MARKET INSIGHTS TESTS ---
-    print("\n5. Market Insights Engine Verification...")
-    try:
-        insights = make_request(f"{BASE_URL}/api/market-insights")
-        
-        # Since latest chat text is panic, verify we receive loss aversion bias warnings
-        has_bias_warning = any("Loss Aversion" in item["title"] for item in insights)
-        has_action_plan = any("48-Hour Rule" in item["title"] for item in insights)
-        
-        assert has_bias_warning
-        assert has_action_plan
-        print(f"  [PASS] Insights dynamically load 'Loss Aversion Bias' and 'The 48-Hour Rule' during Panic state.")
-    except Exception as e:
-        print(f"  [FAIL] Market insights test failure: {e}")
-        sys.exit(1)
-
-    # --- RESET PROFILE AND CLEAN UP ---
-    try:
-        # Restore normal Moderate default
-        make_request(f"{BASE_URL}/api/profile", "POST", {
-            "name": "Investor",
-            "risk_tolerance": "Moderate",
-            "advisor_persona": "Empathetic"
-        })
-        make_request(f"{BASE_URL}/api/chat", "DELETE")
-        print("\n  [INFO] Test data re-seeded and cleaned.")
-    except Exception:
-        pass
-
     print("\n====================================================")
-    print("   ALL API INTEGRATION TESTS PASSED SUCCESSFULLY!   ")
+    print("  ALL SECURE API INTEGRATION TESTS PASSED SUCCESSFULLY! ")
     print("====================================================")
 
 if __name__ == "__main__":

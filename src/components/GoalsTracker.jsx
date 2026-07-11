@@ -6,7 +6,6 @@ import {
   Calendar, 
   TrendingUp, 
   Info,
-  ChevronRight,
   AlertCircle
 } from 'lucide-react';
 
@@ -39,21 +38,40 @@ export default function GoalsTracker({ goals, onAddGoal, onDeleteGoal }) {
     setShowAddForm(false);
   };
 
-  // Helper to calculate monthly savings required
+  // Helper to calculate monthly savings required safely
   const calculateMonthlySavings = (target, current, dateStr) => {
-    const remaining = target - current;
-    if (remaining <= 0) return 0;
+    try {
+      const remaining = target - current;
+      if (remaining <= 0) return 0;
 
-    const targetDateObj = new Date(dateStr);
-    const today = new Date();
-    
-    // Calculate difference in months
-    let months = (targetDateObj.getFullYear() - today.getFullYear()) * 12;
-    months -= today.getMonth();
-    months += targetDateObj.getMonth();
+      const targetDateObj = new Date(dateStr);
+      if (isNaN(targetDateObj.getTime())) return remaining;
 
-    if (months <= 0) return remaining; // Due immediately
-    return remaining / months;
+      const today = new Date();
+      
+      // Calculate difference in months
+      let months = (targetDateObj.getFullYear() - today.getFullYear()) * 12;
+      months -= today.getMonth();
+      months += targetDateObj.getMonth();
+
+      if (months <= 0) return remaining; // Due immediately or past
+      
+      const result = remaining / months;
+      return isNaN(result) || !isFinite(result) ? remaining : result;
+    } catch (e) {
+      return target - current;
+    }
+  };
+
+  // Helper to safely format local date strings
+  const formatDateSafe = (dateStr) => {
+    try {
+      const date = new Date(dateStr);
+      if (isNaN(date.getTime())) return dateStr || 'N/A';
+      return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+    } catch (e) {
+      return dateStr || 'N/A';
+    }
   };
 
   return (
@@ -199,7 +217,7 @@ export default function GoalsTracker({ goals, onAddGoal, onDeleteGoal }) {
                 <div style={{ flex: 1.5, minWidth: '220px', background: 'rgba(255,255,255,0.02)', padding: '12px 18px', borderRadius: '12px', border: '1px solid var(--border-glass)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
                     <Calendar size={14} />
-                    Target Date: {new Date(goal.target_date).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
+                    Target Date: {formatDateSafe(goal.target_date)}
                   </div>
                   {remaining > 0 ? (
                     <>
